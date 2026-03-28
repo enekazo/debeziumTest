@@ -67,10 +67,12 @@
         </dependency>
 
         <!-- Parquet + Avro (bundled in fat jar) -->
+        <!-- 1.15.2 patches CVE-2025-46762 (arbitrary code execution) and a related
+             malicious-schema execution issue present in all versions < 1.15.1 / < 1.15.2 -->
         <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-avro</artifactId>
-            <version>1.14.4</version>
+            <version>1.15.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.avro</groupId>
