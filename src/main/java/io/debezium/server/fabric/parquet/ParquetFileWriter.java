@@ -91,7 +91,7 @@ public class ParquetFileWriter {
             record.put(col.getName(), converted);
         }
 
-        // rowMarker value
+        // row marker value
         Object markerVal = row.get(rowMarkerColumn);
         int marker = 0;
         if (markerVal instanceof Number) {

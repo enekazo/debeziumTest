@@ -52,12 +52,14 @@ public class AbfsStorageBackend implements StorageBackend {
 
     @Override
     public void uploadFile(String tableFolder, String filename, Path localFile) throws Exception {
-        String tmpPath = basePath + tableFolder + "/" + filename + ".tmp";
+        // Write to a .tmp path first, then atomically rename to the final path.
+        // Both paths are relative to the filesystem root (no leading slash).
+        String tmpPath   = basePath + tableFolder + "/" + filename + ".tmp";
         String finalPath = basePath + tableFolder + "/" + filename;
 
         byte[] data = Files.readAllBytes(localFile);
 
-        // Create the file in storage (overwrite if exists)
+        // Create the temporary file in storage (overwrite if a stale .tmp exists)
         DataLakeFileClient tmpFileClient = fileSystemClient.createFile(tmpPath, true);
 
         // Upload in chunks
@@ -73,9 +75,10 @@ public class AbfsStorageBackend implements StorageBackend {
             tmpFileClient.flush(offset, true);
         }
 
-        // Atomic rename: .tmp → final
-        String newName = basePath + tableFolder + "/" + filename;
-        tmpFileClient.rename(null, newName);
+        // Atomic rename within the same filesystem.
+        // First arg (destinationFileSystem) is null → use the same filesystem.
+        // Second arg is the destination path relative to the filesystem root.
+        tmpFileClient.rename(null, finalPath);
 
         LOG.debug("Uploaded {} bytes to {}", data.length, finalPath);
     }

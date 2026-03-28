@@ -197,7 +197,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
         switch (op) {
             case "c", "r" -> {
-                // Create / snapshot read → insert
+                // "c" = create (INSERT), "r" = snapshot read — both produce INSERT rows in the landing zone
                 row = jsonNodeToMap(afterNode);
                 marker = MARKER_INSERT;
             }
