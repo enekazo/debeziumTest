@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  debezium-server:
+    build: .
+    container_name: debezium-fabric-sink
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # OneLake SAS token (keep out of config files)
+      ONELAKE_SAS: "${ONELAKE_SAS}"
+      # Oracle database password
+      ORACLE_PASSWORD: "${ORACLE_PASSWORD}"
+    volumes:
+      # Mount application.properties into Debezium Server's expected config location
+      - ./src/main/resources/application.properties:/debezium/conf/application.properties:ro
+      # Persistent offset storage so CDC position survives restarts
+      - debezium-offsets:/debezium/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/q/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  debezium-offsets:
+    driver: local
