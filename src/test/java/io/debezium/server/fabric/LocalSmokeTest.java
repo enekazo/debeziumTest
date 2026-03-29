@@ -40,8 +40,10 @@ public class LocalSmokeTest {
 
     @Before
     public void setUp() throws Exception {
-        // Create a unique temp directory for this test run
-        tempDir = Files.createTempDirectory("fabric-smoke-test-");
+        // Write to a fixed folder so generated Parquet files can be inspected after the run.
+        // Output location: target/test-output/
+        tempDir = Paths.get("target", "test-output").toAbsolutePath();
+        Files.createDirectories(tempDir);
 
         storage = new LocalStorageBackend("file://" + tempDir.toAbsolutePath());
 
@@ -58,8 +60,8 @@ public class LocalSmokeTest {
 
     @After
     public void tearDown() throws Exception {
-        // Clean up temp directory
-        deleteRecursively(tempDir);
+        // Output kept on disk intentionally — inspect generated files at target/test-output/
+        // To clean: run `mvn clean` or delete the folder manually.
     }
 
     @Test
@@ -200,7 +202,6 @@ public class LocalSmokeTest {
         return rows;
     }
 
-    @SuppressWarnings("deprecation")
     private List<GenericRecord> readParquet(Path path) throws Exception {
         List<GenericRecord> records = new ArrayList<>();
         try (ParquetReader<GenericRecord> reader = AvroParquetReader
@@ -213,14 +214,5 @@ public class LocalSmokeTest {
             }
         }
         return records;
-    }
-
-    private void deleteRecursively(Path dir) throws Exception {
-        if (!Files.exists(dir)) return;
-        Files.walk(dir)
-                .sorted(java.util.Comparator.reverseOrder())
-                .forEach(p -> {
-                    try { Files.deleteIfExists(p); } catch (Exception ignored) {}
-                });
     }
 }
