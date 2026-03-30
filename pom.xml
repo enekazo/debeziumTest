@@ -13,15 +13,26 @@
     <description>Custom Debezium Server sink that writes CDC events to Microsoft Fabric Open Mirroring landing zone as Parquet files</description>
 
     <properties>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
+        <!-- Java 21 — Quarkus 3.27.x LTS only supports up to 21 -->
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <debezium.version>3.4.2.Final</debezium.version>
+        <quarkus.platform.version>3.27.1</quarkus.platform.version>
     </properties>
 
-    <!-- Force patched versions of vulnerable transitive dependencies (pulled in by hadoop-common) -->
     <dependencyManagement>
         <dependencies>
+            <!-- Quarkus platform BOM — manages all Quarkus extension versions consistently -->
+            <dependency>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Force patched versions of vulnerable transitive dependencies (pulled in by hadoop-common) -->
             <!-- protobuf-java 2.5.0: CVE-2021-22569 (HIGH), CVE-2022-3171 (MEDIUM), CVE-2024-7254 (HIGH) -->
             <dependency>
                 <groupId>com.google.protobuf</groupId>
@@ -130,51 +141,25 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- Debezium Server (provided by runtime) -->
+        <!-- ── Debezium Server — now compile-scoped because we own the Quarkus build ── -->
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-server-core</artifactId>
             <version>${debezium.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-api</artifactId>
             <version>${debezium.version}</version>
-            <scope>provided</scope>
         </dependency>
-
-        <!-- CDI API (provided by Quarkus in Debezium Server) -->
+        <!-- Oracle CDC connector -->
         <dependency>
-            <groupId>jakarta.enterprise</groupId>
-            <artifactId>jakarta.enterprise.cdi-api</artifactId>
-            <version>4.0.1</version>
-            <scope>provided</scope>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-connector-oracle</artifactId>
+            <version>${debezium.version}</version>
         </dependency>
-
-        <!-- MicroProfile Config (provided by Debezium Server) -->
-        <dependency>
-            <groupId>org.eclipse.microprofile.config</groupId>
-            <artifactId>microprofile-config-api</artifactId>
-            <version>3.1</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- Jackson (provided by Debezium Server) -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.17.2</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- SLF4J API (provided by Debezium Server) -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>2.0.9</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- CDI, MicroProfile Config, Jackson, SLF4J all come transitively
+             from debezium-server-core / quarkus-bom — no explicit declarations needed -->
 
         <!-- Parquet + Avro (bundled in fat jar) -->
         <!-- 1.15.2 patches CVE-2025-46762 (arbitrary code execution) and a related
@@ -195,6 +180,12 @@
             <groupId>com.azure</groupId>
             <artifactId>azure-storage-file-datalake</artifactId>
             <version>12.26.2</version>
+        </dependency>
+        <!-- Azure Identity — service principal / Entra ID authentication -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.15.4</version>
         </dependency>
 
         <!-- Oracle JDBC (bundled in fat jar) -->
@@ -281,43 +272,26 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
+                    <source>21</source>
+                    <target>21</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
 
+            <!-- Quarkus Maven plugin — performs CDI bean discovery at BUILD TIME
+                 so FabricMirroringSink/@Named("fabric") is baked into the application -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
                 <executions>
                     <execution>
-                        <phase>package</phase>
                         <goals>
-                            <goal>shade</goal>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
                         </goals>
-                        <configuration>
-                            <finalName>debezium-server-sink-fabric-1.0.0-SNAPSHOT-all</finalName>
-                            <shadedArtifactAttached>false</shadedArtifactAttached>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>META-INF/services/io.debezium.engine.DebeziumEngine$ChangeConsumer</resource>
-                                </transformer>
-                            </transformers>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>

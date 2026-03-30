@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "request": "attach",
+      "name": "Attach to Debezium (Docker :5005)",
+      "hostName": "localhost",
+      "port": 5005,
+      // Set to true if you want the debugger to wait until VS Code attaches
+      // before the JVM starts executing (useful for catching early startup issues).
+      // Matches suspend=n in JAVA_TOOL_OPTIONS — change both together.
+      "timeout": 30000
+    }
+  ]
+}

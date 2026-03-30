@@ -1,2 +1,5 @@
 target/
 *.class
+
+# Local OneLake profile — contains real workspace/tenant IDs; use .template instead
+src/main/resources/application-onelake.properties

@@ -11,9 +11,9 @@ import org.slf4j.LoggerFactory;
  * Manages _metadata.json files per table folder in the landing zone.
  *
  * Microsoft Fabric Open Mirroring reads this file to understand the table structure.
- * Format:
+ * Format (case-sensitive — Fabric requires lowercase keys):
  * {
- *   "KeyColumns": ["col1", "col2"]
+ *   "keyColumns": ["col1", "col2"]
  * }
  *
  * The file is created/overwritten on sink startup for each table.
@@ -37,7 +37,7 @@ public class MetadataManager {
      */
     public void ensureMetadata(String tableFolder, TableMetadata metadata) throws Exception {
         ObjectNode root = objectMapper.createObjectNode();
-        ArrayNode keyColumns = root.putArray("KeyColumns");
+        ArrayNode keyColumns = root.putArray("keyColumns");  // lowercase — Fabric spec is case-sensitive
         for (String pk : metadata.getPkColumns()) {
             keyColumns.add(pk);
         }

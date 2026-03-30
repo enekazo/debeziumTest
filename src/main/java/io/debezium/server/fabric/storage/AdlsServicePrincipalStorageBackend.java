@@ -1,6 +1,7 @@
 package io.debezium.server.fabric.storage;
 
-import com.azure.storage.file.datalake.DataLakeDirectoryClient;
+import com.azure.identity.ClientSecretCredential;
+import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.storage.file.datalake.DataLakeFileClient;
 import com.azure.storage.file.datalake.DataLakeFileSystemClient;
 import com.azure.storage.file.datalake.DataLakeFileSystemClientBuilder;
@@ -19,50 +20,64 @@ import java.util.List;
 
 /**
  * Azure Data Lake Storage Gen2 implementation of StorageBackend.
- * Connects to Microsoft Fabric OneLake via ABFS URI and SAS token authentication.
+ * Authenticates using an Entra ID (Azure AD) service principal via the
+ * client credentials flow (tenant ID + client ID + client secret).
  *
- * baseUri format: abfss://<filesystem>@<account>.dfs.fabric.microsoft.com/<basePath>
- * Example:        abfss://mycontainer@onelake.dfs.fabric.microsoft.com/workspace/db/landing
+ * baseUri format: abfss://<filesystem>@<account>.dfs.core.windows.net/<basePath>
+ * Example:        abfss://raw@myadlsaccount.dfs.core.windows.net/landing/debezium
  */
-public class AbfsStorageBackend implements StorageBackend {
+public class AdlsServicePrincipalStorageBackend implements StorageBackend {
 
-    private static final Logger LOG = LoggerFactory.getLogger(AbfsStorageBackend.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AdlsServicePrincipalStorageBackend.class);
     private static final int UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB
 
     private final DataLakeFileSystemClient fileSystemClient;
     private final String basePath;
 
-    public AbfsStorageBackend(String baseUri, String sasToken) {
+    /**
+     * @param baseUri      ABFS URI — abfss://&lt;filesystem&gt;@&lt;account&gt;.dfs.core.windows.net/&lt;path&gt;
+     * @param tenantId     Entra ID (Azure AD) tenant ID (directory ID)
+     * @param clientId     Service principal application (client) ID
+     * @param clientSecret Service principal client secret value
+     */
+    public AdlsServicePrincipalStorageBackend(String baseUri,
+                                              String tenantId,
+                                              String clientId,
+                                              String clientSecret) {
         ParsedUri parsed = parseAbfsUri(baseUri);
 
-        // Build the filesystem client directly using the container endpoint + SAS token.
-        // This supports container-scoped SAS (sr=c) which cannot authenticate against the
-        // account-level service endpoint used by DataLakeServiceClientBuilder.
-        String filesystemUrl = "https://" + parsed.accountHost + "/" + parsed.filesystem
-                + (sasToken != null && !sasToken.isBlank() ? "?" + sasToken : "");
+        ClientSecretCredential credential = new ClientSecretCredentialBuilder()
+                .tenantId(tenantId)
+                .clientId(clientId)
+                .clientSecret(clientSecret)
+                .build();
+
+        // Filesystem-scoped endpoint: https://<account>.dfs.core.windows.net/<filesystem>
+        String filesystemUrl = "https://" + parsed.accountHost + "/" + parsed.filesystem;
 
         this.fileSystemClient = new DataLakeFileSystemClientBuilder()
                 .endpoint(filesystemUrl)
+                .credential(credential)
                 .buildClient();
 
         this.basePath = parsed.path.isEmpty() ? "" : (parsed.path.endsWith("/") ? parsed.path : parsed.path + "/");
 
-        LOG.info("AbfsStorageBackend initialized: filesystem={}, basePath={}", parsed.filesystem, this.basePath);
+        LOG.info("AdlsServicePrincipalStorageBackend initialized: account={}, filesystem={}, basePath={}",
+                parsed.accountHost, parsed.filesystem, this.basePath);
     }
 
     @Override
     public void uploadFile(String tableFolder, String filename, Path localFile) throws Exception {
         // Write to a .tmp path first, then atomically rename to the final path.
-        // Both paths are relative to the filesystem root (no leading slash).
         String tmpPath   = resolvePath(tableFolder, filename + ".tmp");
         String finalPath = resolvePath(tableFolder, filename);
 
         byte[] data = Files.readAllBytes(localFile);
 
-        // Create the temporary file in storage (overwrite if a stale .tmp exists)
+        // Create (or overwrite) the temporary file in storage
         DataLakeFileClient tmpFileClient = fileSystemClient.createFile(tmpPath, true);
 
-        // Upload in chunks
+        // Upload in chunks to avoid large in-memory payloads on the wire
         try (InputStream is = new ByteArrayInputStream(data)) {
             long offset = 0;
             byte[] buffer = new byte[UPLOAD_CHUNK_SIZE];
@@ -75,9 +90,7 @@ public class AbfsStorageBackend implements StorageBackend {
             tmpFileClient.flush(offset, true);
         }
 
-        // Atomic rename within the same filesystem.
-        // First arg (destinationFileSystem) is null → use the same filesystem.
-        // Second arg is the destination path relative to the filesystem root.
+        // Atomic rename within the same filesystem (null → same filesystem)
         tmpFileClient.rename(null, finalPath);
 
         LOG.debug("Uploaded {} bytes to {}", data.length, finalPath);
@@ -104,7 +117,7 @@ public class AbfsStorageBackend implements StorageBackend {
         String filePath = resolvePath(tableFolder, filename);
         byte[] data = content.getBytes(StandardCharsets.UTF_8);
 
-        // Ensure directory exists
+        // Ensure parent directory exists
         String dirPath = resolveDir(tableFolder);
         try {
             fileSystemClient.createDirectoryIfNotExists(dirPath);
@@ -142,7 +155,6 @@ public class AbfsStorageBackend implements StorageBackend {
             fileSystemClient.listPaths(options, null).forEach(pathItem -> {
                 if (!pathItem.isDirectory()) {
                     String fullPath = pathItem.getName();
-                    // Extract filename from full path
                     int lastSlash = fullPath.lastIndexOf('/');
                     String filename = lastSlash >= 0 ? fullPath.substring(lastSlash + 1) : fullPath;
                     files.add(filename);
@@ -180,7 +192,7 @@ public class AbfsStorageBackend implements StorageBackend {
     }
 
     private static ParsedUri parseAbfsUri(String uri) {
-        // abfss://<filesystem>@<account>.dfs.fabric.microsoft.com/<path>
+        // Expected: abfss://<filesystem>@<account>.dfs.core.windows.net/<path>
         if (!uri.startsWith("abfss://")) {
             throw new IllegalArgumentException("ABFS URI must start with abfss://: " + uri);
         }

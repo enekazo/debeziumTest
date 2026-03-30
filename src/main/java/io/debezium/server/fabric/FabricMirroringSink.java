@@ -8,7 +8,7 @@ import io.debezium.server.fabric.config.FabricSinkConfig;
 import io.debezium.server.fabric.metadata.OracleMetadataLoader;
 import io.debezium.server.fabric.metadata.TableMetadata;
 import io.debezium.server.fabric.parquet.ParquetFileWriter;
-import io.debezium.server.fabric.storage.AbfsStorageBackend;
+import io.debezium.server.fabric.storage.AdlsServicePrincipalStorageBackend;
 import io.debezium.server.fabric.storage.LocalStorageBackend;
 import io.debezium.server.fabric.storage.MetadataManager;
 import io.debezium.server.fabric.storage.SequenceManager;
@@ -84,7 +84,8 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
         // Initialize storage backend
         if (config.baseUri.startsWith("abfss://")) {
-            storage = new AbfsStorageBackend(config.baseUri, config.sasToken);
+            storage = new AdlsServicePrincipalStorageBackend(
+                    config.baseUri, config.spTenantId, config.spClientId, config.spClientSecret);
         } else {
             storage = new LocalStorageBackend(config.baseUri);
         }
@@ -103,6 +104,16 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
         metadataManager = new MetadataManager(storage);
         parquetWriter = new ParquetFileWriter();
         objectMapper = new ObjectMapper();
+
+        // Write _partnerEvents.json at the landing zone root (strongly recommended by Fabric)
+        try {
+            String partnerEvents = "{\"partnerName\":\"debezium-fabric-sink\"," +
+                    "\"sourceInfo\":{\"sourceType\":\"Oracle\",\"sourceVersion\":\"23c\"}}";
+            storage.writeTextFile("", "_partnerEvents.json", partnerEvents);
+            LOG.info("Wrote _partnerEvents.json to landing zone root");
+        } catch (Exception e) {
+            LOG.warn("Could not write _partnerEvents.json: {}", e.getMessage());
+        }
 
         // Start background flush scheduler
         flushScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -235,10 +246,9 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
     private Map<String, Object> fetchUpdatedRow(String tableFolder, JsonNode beforeNode) {
         try {
-            String[] parts = tableFolder.split("_", 2);
-            if (parts.length < 2) return null;
-            String schema = parts[0];
-            String tableName = parts[1];
+            String[] parsed = parseSchemaTable(tableFolder);
+            String schema = parsed[0];
+            String tableName = parsed[1];
             TableMetadata meta = getOrLoadMetadata(tableFolder, schema, tableName);
             if (meta == null || meta.getPkColumns().isEmpty()) return null;
 
@@ -292,9 +302,9 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
         List<Map<String, Object>> rows = new ArrayList<>(buffer);
         buffer.clear();
 
-        String[] parts = tableFolder.split("_", 2);
-        String schema = parts.length >= 2 ? parts[0] : tableFolder;
-        String tableName = parts.length >= 2 ? parts[1] : tableFolder;
+        String[] parsed = parseSchemaTable(tableFolder);
+        String schema = parsed[0];
+        String tableName = parsed[1];
 
         // Ensure table is initialized (metadata.json, sequence)
         ensureTableInitialized(tableFolder, schema, tableName);
@@ -307,7 +317,8 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
         long seq = sequenceManager.nextSequence(tableFolder);
         String filename = SequenceManager.toFilename(seq);
-        Path tempFile = tempDir.resolve(tableFolder + "_" + filename);
+        String safeName = tableFolder.replace("/", "__").replace(".", "_");
+        Path tempFile = tempDir.resolve(safeName + "_" + filename);
 
         try {
             parquetWriter.write(meta, config.rowMarkerColumn, rows, config.compression, tempFile);
@@ -361,16 +372,33 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
         return null;
     }
 
+    /** Parses a tableFolder like "HR.schema/EMPLOYEES" into {"HR", "EMPLOYEES"}. */
+    private String[] parseSchemaTable(String tableFolder) {
+        int idx = tableFolder.indexOf(".schema/");
+        if (idx > 0) {
+            return new String[]{tableFolder.substring(0, idx), tableFolder.substring(idx + ".schema/".length())};
+        }
+        return new String[]{tableFolder, tableFolder};
+    }
+
     /**
      * Converts a Debezium topic name to a table folder name.
-     * "oracle.HR.EMPLOYEES" with prefix "oracle" → "HR_EMPLOYEES"
+     * "oracle.HR.EMPLOYEES" with prefix "oracle" → "HR.schema/EMPLOYEES"
      */
     private String topicToTableFolder(String topic) {
         String stripped = topic;
         if (!config.topicPrefix.isBlank() && topic.startsWith(config.topicPrefix + ".")) {
             stripped = topic.substring(config.topicPrefix.length() + 1);
         }
-        // Replace first dot with underscore to get SCHEMA_TABLE
+        // Fabric schema folder convention: <Schema>.schema/<Table>
+        // e.g. topic "oracle.HR.EMPLOYEES" → stripped "HR.EMPLOYEES" → "HR.schema/EMPLOYEES"
+        // If there is no dot (no schema), use the name as-is.
+        int dotIdx = stripped.indexOf('.');
+        if (dotIdx > 0 && dotIdx < stripped.length() - 1) {
+            String schema = stripped.substring(0, dotIdx);
+            String table  = stripped.substring(dotIdx + 1).replace(".", "_"); // flatten any extra dots
+            return schema + ".schema/" + table;
+        }
         return stripped.replace(".", "_");
     }
 

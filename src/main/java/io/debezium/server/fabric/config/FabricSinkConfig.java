@@ -5,7 +5,12 @@ import org.eclipse.microprofile.config.ConfigProvider;
 public class FabricSinkConfig {
 
     public final String baseUri;
+    public final String authType;
     public final String sasToken;
+    // Service-principal (Entra ID) credentials — used when authType="service-principal"
+    public final String spTenantId;
+    public final String spClientId;
+    public final String spClientSecret;
     public final long flushMaxBytes;
     public final int flushMaxRecords;
     public final long flushIntervalMs;
@@ -20,13 +25,18 @@ public class FabricSinkConfig {
     public final String topicPrefix;
 
     private FabricSinkConfig(
-            String baseUri, String sasToken,
+            String baseUri, String authType, String sasToken,
+            String spTenantId, String spClientId, String spClientSecret,
             long flushMaxBytes, int flushMaxRecords, long flushIntervalMs,
             String compression, String rowMarkerColumn, String stateFileName,
             String oracleJdbcUrl, String oracleUsername, String oraclePassword,
             long oracleMetaRefreshMs, boolean fetchRowOnUpdate, String topicPrefix) {
         this.baseUri = baseUri;
+        this.authType = authType;
         this.sasToken = sasToken;
+        this.spTenantId = spTenantId;
+        this.spClientId = spClientId;
+        this.spClientSecret = spClientSecret;
         this.flushMaxBytes = flushMaxBytes;
         this.flushMaxRecords = flushMaxRecords;
         this.flushIntervalMs = flushIntervalMs;
@@ -46,12 +56,24 @@ public class FabricSinkConfig {
 
         String baseUri = cfg.getValue("fabric.landing.baseUri", String.class);
 
-        // SAS token: check config property first, then env var
+        // Authentication type: "sas" (default) or "service-principal"
+        String authType = cfg.getOptionalValue("fabric.landing.auth", String.class)
+                .orElse("sas");
+
+        // SAS token: check config property first, then env var (used when authType="sas")
         String sasToken = cfg.getOptionalValue("fabric.landing.sasToken", String.class)
                 .orElseGet(() -> {
                     String env = System.getenv("ONELAKE_SAS");
                     return env != null ? env : "";
                 });
+
+        // Service-principal credentials (used when authType="service-principal")
+        String spTenantId = cfg.getOptionalValue("fabric.sp.tenantId", String.class)
+                .orElseGet(() -> System.getenv("AZURE_TENANT_ID"));
+        String spClientId = cfg.getOptionalValue("fabric.sp.clientId", String.class)
+                .orElseGet(() -> System.getenv("AZURE_CLIENT_ID"));
+        String spClientSecret = cfg.getOptionalValue("fabric.sp.clientSecret", String.class)
+                .orElseGet(() -> System.getenv("AZURE_CLIENT_SECRET"));
 
         long flushMaxBytes = cfg.getOptionalValue("fabric.flush.maxBytes", Long.class)
                 .orElse(1073741824L);
@@ -88,7 +110,8 @@ public class FabricSinkConfig {
                 .orElse("");
 
         return new FabricSinkConfig(
-                baseUri, sasToken,
+                baseUri, authType, sasToken,
+                spTenantId, spClientId, spClientSecret,
                 flushMaxBytes, flushMaxRecords, flushIntervalMs,
                 compression, rowMarkerColumn, stateFileName,
                 oracleJdbcUrl, oracleUsername, oraclePassword,

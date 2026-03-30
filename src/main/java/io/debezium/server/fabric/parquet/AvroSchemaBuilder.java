@@ -3,7 +3,6 @@ package io.debezium.server.fabric.parquet;
 import io.debezium.server.fabric.metadata.ColumnMetadata;
 import io.debezium.server.fabric.metadata.TableMetadata;
 import org.apache.avro.Schema;
-import org.apache.avro.SchemaBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,16 +37,13 @@ public class AvroSchemaBuilder {
 
         for (ColumnMetadata col : tableMetadata.getColumns()) {
             Schema fieldSchema = oracleTypeToAvroSchema(col);
-            Schema.Field field;
-            if (col.isNullable()) {
-                // Union: ["null", <type>] with default null
-                Schema nullableSchema = Schema.createUnion(
-                        Schema.create(Schema.Type.NULL),
-                        fieldSchema);
-                field = new Schema.Field(col.getName(), nullableSchema, null, Schema.Field.NULL_DEFAULT_VALUE);
-            } else {
-                field = new Schema.Field(col.getName(), fieldSchema, null, (Object) null);
-            }
+            // All data columns are nullable in the Parquet schema regardless of Oracle nullability.
+            // CDC events (UPDATE via LogMiner, DELETE with only PK) routinely omit non-PK columns,
+            // which would cause "Null-value for required field" errors at flush time.
+            Schema nullableSchema = Schema.createUnion(
+                    Schema.create(Schema.Type.NULL),
+                    fieldSchema);
+            Schema.Field field = new Schema.Field(col.getName(), nullableSchema, null, Schema.Field.NULL_DEFAULT_VALUE);
             fields.add(field);
         }
 
