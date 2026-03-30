@@ -43,7 +43,7 @@ services:
       JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
     volumes:
       # Single config file — all Oracle source and OneLake sink settings
-      - ./src/main/resources/application-oracle.properties:/debezium/config/application.properties:ro
+      - ./src/main/resources/application.properties:/debezium/config/application.properties:ro
       # Persistent offset storage so CDC position survives restarts
       - debezium-offsets:/debezium/data
     depends_on:

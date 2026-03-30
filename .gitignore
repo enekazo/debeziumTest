@@ -2,7 +2,6 @@ target/
 *.class
 
 # Main config — contains real workspace/tenant IDs and passwords; use .template instead
+src/main/resources/application.properties
 src/main/resources/application-oracle.properties
-
-# Legacy split profile (no longer used)
 src/main/resources/application-onelake.properties

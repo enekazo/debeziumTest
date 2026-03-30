@@ -1,7 +1,7 @@
-# Fabric Open Mirroring sink configuration
+# Oracle → Fabric Open Mirroring — main configuration
 #
 # SETUP:
-#   cp application-oracle.properties.template application-oracle.properties
+#   cp application.properties.template application.properties
 #   Fill in all <placeholder> values with your own credentials.
 #   Set environment variables before starting:
 #     export ORACLE_PASSWORD="<your-oracle-password>"
@@ -34,14 +34,14 @@ fabric.rowMarker.column=__rowMarker__
 # Sequence state file
 fabric.sequence.stateFileName=_sequence.txt
 
-# Oracle JDBC settings — connect to ORCLPDB1 to fetch table/column metadata
+# ── Oracle JDBC — metadata loader ─────────────────────────────────────────────
 fabric.oracle.jdbcUrl=jdbc:oracle:thin:@//oracle-db:1521/ORCLPDB1
 fabric.oracle.username=c##dbzuser
 fabric.oracle.password=${ORACLE_PASSWORD}
 fabric.oracle.metadata.refreshIntervalMs=300000
 fabric.oracle.fetchRowOnUpdate=true
 
-# Debezium source (Oracle connector)
+# ── Debezium source (Oracle connector) ────────────────────────────────────────
 debezium.source.connector.class=io.debezium.connector.oracle.OracleConnector
 debezium.source.database.hostname=oracle-db
 debezium.source.database.port=1521
@@ -50,7 +50,7 @@ debezium.source.database.password=${ORACLE_PASSWORD}
 debezium.source.database.dbname=FREE
 debezium.source.database.pdb.name=ORCLPDB1
 
-# Use file-based schema history — no Kafka required
+# File-based schema history — no Kafka required
 debezium.source.schema.history.internal=io.debezium.storage.file.history.FileSchemaHistory
 debezium.source.schema.history.internal.file.filename=/debezium/data/schemahistory.dat
 
