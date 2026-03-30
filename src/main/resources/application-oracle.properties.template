@@ -1,14 +1,24 @@
 # Fabric Open Mirroring sink configuration
+#
+# SETUP:
+#   cp application-oracle.properties.template application-oracle.properties
+#   Fill in all <placeholder> values with your own credentials.
+#   Set environment variables before starting:
+#     export ORACLE_PASSWORD="<your-oracle-password>"
+#     export AZURE_CLIENT_SECRET="<your-service-principal-secret>"
+# ─────────────────────────────────────────────────────────────────────────────
 debezium.sink.type=fabric
 
 # ── OneLake landing zone ──────────────────────────────────────────────────────
 # ABFS URI: abfss://<workspaceId>@onelake.dfs.fabric.microsoft.com/<itemId>/Files/LandingZone
-fabric.landing.baseUri=abfss://10fda0a1-ad1f-4b0b-86fe-fa2cf5cebce2@onelake.dfs.fabric.microsoft.com/1b044492-6f0f-4465-a30e-2ffab42f5e70/Files/LandingZone
+# workspaceId — GUID from the Fabric portal URL for your workspace
+# itemId      — GUID of the Mirrored Database item
+fabric.landing.baseUri=abfss://<workspaceId>@onelake.dfs.fabric.microsoft.com/<itemId>/Files/LandingZone
 
 # Authentication: Entra ID service principal
 fabric.landing.auth=service-principal
-fabric.sp.tenantId=8d66ab52-dbaf-4bdc-8178-ce448361b104
-fabric.sp.clientId=80586b13-4e01-4f9c-8649-d74b26828f64
+fabric.sp.tenantId=<your-entra-tenant-id>
+fabric.sp.clientId=<your-service-principal-client-id>
 # Secret is read from the AZURE_CLIENT_SECRET environment variable — never commit the raw value.
 fabric.sp.clientSecret=${AZURE_CLIENT_SECRET}
 
@@ -33,10 +43,6 @@ fabric.oracle.fetchRowOnUpdate=true
 
 # Debezium source (Oracle connector)
 debezium.source.connector.class=io.debezium.connector.oracle.OracleConnector
-# Connect to the CDB (FREE) as the CDB common user c##dbzuser.
-# DBMS_LOGMNR (LogMiner) MUST run in the CDB root context — cannot be called from a PDB.
-# Debezium switches to the PDB context internally for schema/data operations.
-# DBMS_METADATA now works because SELECT_CATALOG_ROLE was granted to c##dbzuser in ORCLPDB1.
 debezium.source.database.hostname=oracle-db
 debezium.source.database.port=1521
 debezium.source.database.user=c##dbzuser
@@ -48,9 +54,6 @@ debezium.source.database.pdb.name=ORCLPDB1
 debezium.source.schema.history.internal=io.debezium.storage.file.history.FileSchemaHistory
 debezium.source.schema.history.internal.file.filename=/debezium/data/schemahistory.dat
 
-# Disable DDL schema-change events so Debezium skips the DBMS_METADATA.GET_DDL call.
-# CDB common users (c##dbzuser) cannot call DBMS_METADATA on PDB objects in Oracle 23c.
-# Schema is still captured from the redo log during streaming.
 debezium.source.include.schema.changes=false
 debezium.source.topic.prefix=oracle
 debezium.source.schema.include.list=HR
