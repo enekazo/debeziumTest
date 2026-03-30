@@ -34,9 +34,6 @@ services:
       - "8080:8080"
       - "5005:5005"
     environment:
-      # Activate the onelake Quarkus profile (merges application-onelake.properties
-      # on top of the base application.properties)
-      QUARKUS_PROFILE: onelake
       # Entra ID service-principal secret for OneLake access
       AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
       # Oracle database password
@@ -45,10 +42,8 @@ services:
       # Remove or set to empty to disable debugging in production
       JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
     volumes:
-      # Base config (Oracle source + default sink settings)
+      # Single config file — all Oracle source and OneLake sink settings
       - ./src/main/resources/application-oracle.properties:/debezium/config/application.properties:ro
-      # Profile overrides — activates OneLake sink via service principal
-      - ./src/main/resources/application-onelake.properties:/debezium/config/application-onelake.properties:ro
       # Persistent offset storage so CDC position survives restarts
       - debezium-offsets:/debezium/data
     depends_on:
