@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  # ── Oracle Free database ────────────────────────────────────────────────────
+  # gvenzl/oracle-free ships with archivelog mode already enabled.
+  # Init scripts under ./oracle/init/ enable supplemental logging, create the
+  # Debezium LogMiner user (c##dbzuser) and populate the HR sample schema.
+  oracle-db:
+    image: gvenzl/oracle-free:23-slim
+    container_name: oracle-db
+    ports:
+      - "1521:1521"
+    environment:
+      # SYS / SYSTEM password — also reused for the Debezium user (see init scripts)
+      ORACLE_PASSWORD: "${ORACLE_PASSWORD}"
+      # PDB name (CDB is always named FREE in this image)
+      ORACLE_DATABASE: ORCLPDB1
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./oracle/init:/container-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+
+  # ── Debezium Server ─────────────────────────────────────────────────────────
+  debezium-server:
+    build: .
+    container_name: debezium-fabric-sink
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "5005:5005"
+    environment:
+      # Activate the onelake Quarkus profile (merges application-onelake.properties
+      # on top of the base application.properties)
+      QUARKUS_PROFILE: onelake
+      # Entra ID service-principal secret for OneLake access
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
+      # Oracle database password
+      ORACLE_PASSWORD: "${ORACLE_PASSWORD}"
+      # Remote debug — JVM listens on port 5005; VS Code attaches to localhost:5005
+      # Remove or set to empty to disable debugging in production
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+    volumes:
+      # Base config (Oracle source + default sink settings)
+      - ./src/main/resources/application-oracle.properties:/debezium/config/application.properties:ro
+      # Profile overrides — activates OneLake sink via service principal
+      - ./src/main/resources/application-onelake.properties:/debezium/config/application-onelake.properties:ro
+      # Persistent offset storage so CDC position survives restarts
+      - debezium-offsets:/debezium/data
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/q/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  debezium-offsets:
+    driver: local
+  oracle-data:
+    driver: local

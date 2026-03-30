@@ -1,0 +1,24 @@
+# ── Quarkus profile: onelake ─────────────────────────────────────────────────
+# Overrides applied on top of application-oracle.properties when
+# QUARKUS_PROFILE=onelake is set.  Only settings that differ from the base
+# profile are listed here.
+#
+# SETUP:
+#   cp application-onelake.properties.template application-onelake.properties
+#   Fill in the values below with your Fabric workspace details.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Landing zone: OneLake ABFS URI derived from
+#   https://onelake.dfs.fabric.microsoft.com/<workspaceId>/<itemId>/Files/LandingZone
+#
+# workspaceId — GUID from the Fabric portal URL for your workspace
+# itemId      — GUID of the Mirrored Database item
+fabric.landing.baseUri=abfss://<workspaceId>@onelake.dfs.fabric.microsoft.com/<itemId>/Files/LandingZone
+
+# Authentication: service-principal (Entra ID client credentials flow)
+fabric.landing.auth=service-principal
+fabric.sp.tenantId=<your-entra-tenant-id>
+fabric.sp.clientId=<your-service-principal-client-id>
+# Secret is read from the AZURE_CLIENT_SECRET environment variable.
+# Set it before starting: export AZURE_CLIENT_SECRET="<your-secret>"
+fabric.sp.clientSecret=${AZURE_CLIENT_SECRET}
