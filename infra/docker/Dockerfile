@@ -31,4 +31,3 @@ RUN mkdir -p /debezium/config /debezium/data
 EXPOSE 8080 5005
 
 ENTRYPOINT ["java", "-jar", "/debezium/quarkus-run.jar"]
-

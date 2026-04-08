@@ -85,7 +85,12 @@ public class FabricSinkConfig {
         String compression = cfg.getOptionalValue("fabric.parquet.compression", String.class)
                 .orElse("SNAPPY");
         String rowMarkerColumn = cfg.getOptionalValue("fabric.rowMarker.column", String.class)
-                .orElse("__rowMarker__");
+                .orElse("__rowMarker__")
+                .trim();
+        // Fabric Open Mirroring requires this exact case-sensitive column name.
+        if (!"__rowMarker__".equals(rowMarkerColumn)) {
+            rowMarkerColumn = "__rowMarker__";
+        }
         String stateFileName = cfg.getOptionalValue("fabric.sequence.stateFileName", String.class)
                 .orElse("_sequence.txt");
 

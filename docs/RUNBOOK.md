@@ -221,7 +221,7 @@ docker compose up -d
 ## Adding a new table to the pipeline
 
 New tables are **not** synced automatically. Debezium uses an explicit allowlist in
-`src/main/resources/application-oracle.properties`. You must add the table there, rebuild, and
+`config/application.properties`. You must add the table there, rebuild, and
 restart with fresh offsets so Debezium snapshots it.
 
 ### Step 1 — Create the table in Oracle (if it does not exist yet)
@@ -253,7 +253,7 @@ SQL
 
 ### Step 2 — Add the table to the include list
 
-Edit `src/main/resources/application-oracle.properties`:
+Edit `config/application.properties`:
 
 ```properties
 # Before
@@ -294,219 +294,16 @@ Wrote _metadata.json for table HR.schema/PROJECTS: {"keyColumns":["PROJECT_ID"]}
 Flushed 2 rows to HR.schema/PROJECTS/00000000000000000001.parquet
 ```
 
-### Step 6 — Generate CDC events on the new table
-
-```bash
-docker exec -i oracle-db sqlplus -s hr/hr@//localhost:1521/ORCLPDB1 <<'SQL'
-INSERT INTO projects VALUES (3, 'AI Initiative', 1200000, SYSDATE, 60);
-COMMIT;
-UPDATE projects SET budget = 600000 WHERE project_id = 1;
-COMMIT;
-DELETE FROM projects WHERE project_id = 2;
-COMMIT;
-EXIT;
-SQL
-```
-
-Then verify after 15 seconds:
-
-```bash
-sleep 15 && docker logs debezium-fabric-sink --since 30s 2>&1 | \
-  grep -E "Flushed|ERROR"
-```
-
-Expected: `Flushed 3 rows to HR.schema/PROJECTS/00000000000000000002.parquet`
-
-### Expected OneLake structure after adding PROJECTS
-
-```
-LandingZone/
-├── _partnerEvents.json
-├── HR.schema/
-│   ├── EMPLOYEES/   ...
-│   ├── DEPARTMENTS/ ...
-│   └── PROJECTS/
-│       ├── _metadata.json                    ← {"keyColumns":["PROJECT_ID"]}
-│       ├── 00000000000000000001.parquet      ← snapshot (rows at restart time)
-│       └── 00000000000000000002.parquet      ← CDC events (insert/update/delete)
-```
-
-### Sync the entire HR schema automatically (no table list)
-
-If you want every table in `HR` captured without maintaining a list, remove
-`debezium.source.table.include.list` from `application-oracle.properties` — the
-`debezium.source.schema.include.list=HR` line already in the file is sufficient:
-
-```properties
-debezium.source.schema.include.list=HR
-# Remove or comment out the next line:
-# debezium.source.table.include.list=HR.EMPLOYEES,HR.DEPARTMENTS
-```
-
-Then rebuild and restart with fresh offsets (Steps 3 & 4 above). Any new table added to
-the `HR` schema in future will be picked up automatically on the next restart.
-
 ---
 
-## Switching storage backends
+## Storage backends
 
-The sink supports three storage options. The backend is selected automatically based on
-the value of `fabric.landing.baseUri` in `application.properties`.
+The sink supports multiple storage options. The backend is selected automatically based on
+the value of `fabric.landing.baseUri` in `config/application.properties`.
 
 | `fabric.landing.baseUri` value | Backend selected |
 |---|---|
-| Starts with `abfss://` | `AdlsServicePrincipalStorageBackend` (Azure ADLS Gen2 / OneLake) |
-| Anything else | `LocalStorageBackend` (local filesystem) |
+| Starts with `abfss://` | Azure ADLS Gen2 / OneLake |
+| Anything else | Local filesystem |
 
----
-
-### Option A — Local filesystem (dev / smoke testing)
-
-No Azure account or credentials required. Parquet files are written inside the container
-and can be inspected directly.
-
-#### Step 1 — Copy the local example config
-
-```bash
-cp src/main/resources/application-local.properties.example \
-   src/main/resources/application.properties
-```
-
-#### Step 2 — Set the only required environment variable
-
-```bash
-export ORACLE_PASSWORD="secret"
-# AZURE_CLIENT_SECRET is not needed for local storage
-```
-
-#### Step 3 — Build and start
-
-```bash
-docker compose build debezium-server
-docker compose up -d
-```
-
-#### Step 4 — Confirm files are being written
-
-```bash
-sleep 30 && docker exec debezium-fabric-sink find /debezium/data/landing -type f | sort
-```
-
-Expected output:
-
-```
-/debezium/data/landing/_partnerEvents.json
-/debezium/data/landing/HR.schema/DEPARTMENTS/_metadata.json
-/debezium/data/landing/HR.schema/DEPARTMENTS/00000000000000000001.parquet
-/debezium/data/landing/HR.schema/EMPLOYEES/_metadata.json
-/debezium/data/landing/HR.schema/EMPLOYEES/00000000000000000001.parquet
-```
-
-#### Step 5 — Inspect a Parquet file (optional)
-
-```bash
-# Copy a file out of the container to inspect locally
-docker cp debezium-fabric-sink:/debezium/data/landing/HR.schema/EMPLOYEES/00000000000000000001.parquet /tmp/employees.parquet
-
-# Read with Python (requires pyarrow: pip install pyarrow)
-python3 -c "import pyarrow.parquet as pq; print(pq.read_table('/tmp/employees.parquet').to_pandas())"
-```
-
-#### Key settings in `application-local.properties.example`
-
-```properties
-fabric.landing.baseUri=/debezium/data/landing   # triggers LocalStorageBackend
-fabric.flush.intervalMs=5000                    # flush every 5s (faster feedback)
-fabric.flush.maxRecords=1000                    # smaller batches
-```
-
----
-
-### Option B — Azure Data Lake Storage Gen2 (service principal)
-
-Use this to write Parquet files to your own ADLS Gen2 storage account, independent of
-Microsoft Fabric / OneLake.
-
-#### Prerequisites
-
-- An ADLS Gen2 storage account with a container (filesystem) created
-- A service principal (app registration) in Entra ID
-- The service principal assigned the **Storage Blob Data Contributor** role on the container
-
-#### Step 1 — Copy the ADLS example config
-
-```bash
-cp src/main/resources/application-adls.properties.example \
-   src/main/resources/application.properties
-```
-
-#### Step 2 — Fill in your Azure values
-
-Edit `application.properties` and replace the four placeholders:
-
-```properties
-# Replace <container>, <storageAccount>, and <basePath>
-fabric.landing.baseUri=abfss://<container>@<storageAccount>.dfs.core.windows.net/<basePath>
-
-# Replace with your Entra ID tenant and service principal details
-fabric.sp.tenantId=<your-entra-tenant-id>
-fabric.sp.clientId=<your-service-principal-client-id>
-```
-
-How to find each value:
-
-| Placeholder | Where to find it |
-|---|---|
-| `<container>` | Azure Portal → Storage account → Containers |
-| `<storageAccount>` | Azure Portal → Storage account name |
-| `<basePath>` | Any folder path, e.g. `debezium/landing` |
-| `<your-entra-tenant-id>` | Azure Portal → Entra ID → Overview → Tenant ID |
-| `<your-service-principal-client-id>` | Azure Portal → Entra ID → App registrations → your app → Application (client) ID |
-
-#### Step 3 — Set environment variables
-
-```bash
-export ORACLE_PASSWORD="secret"
-export AZURE_CLIENT_SECRET="<your-service-principal-secret>"
-```
-
-The client secret is created under: Entra ID → App registrations → your app → Certificates & secrets.
-
-#### Step 4 — Build and start
-
-```bash
-docker compose build debezium-server
-docker compose up -d
-```
-
-#### Step 5 — Confirm files appear in Azure Storage
-
-```bash
-sleep 30 && docker logs debezium-fabric-sink --since 60s 2>&1 | grep -E "Flushed|ERROR"
-```
-
-Then verify in the Azure Portal: Storage account → Containers → your container → `<basePath>/HR.schema/EMPLOYEES/`.
-
-#### Key settings in `application-adls.properties.example`
-
-```properties
-fabric.landing.baseUri=abfss://<container>@<storageAccount>.dfs.core.windows.net/<basePath>
-fabric.landing.auth=service-principal   # selects Entra ID credential flow
-fabric.sp.tenantId=...
-fabric.sp.clientId=...
-fabric.sp.clientSecret=${AZURE_CLIENT_SECRET}
-```
-
----
-
-### Switching back to OneLake
-
-To revert to the default OneLake configuration restore from the template:
-
-```bash
-cp src/main/resources/application.properties.template \
-   src/main/resources/application.properties
-# Fill in your real workspaceId, itemId, tenantId, clientId
-export AZURE_CLIENT_SECRET="<your-onelake-sp-secret>"
-docker compose restart debezium-server
-```
+See the configuration examples in `config/` for each option.

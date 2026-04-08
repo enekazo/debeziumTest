@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-echo "==> [02] Creating Debezium LogMiner user c##dbzuser…"
+echo "==> [02] Creating Debezium LogMiner user c##dbzuserâ€¦"
 
 sqlplus -s / as sysdba << SQLEOF
   -- Switch to the root container

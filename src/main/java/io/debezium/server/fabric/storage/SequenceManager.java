@@ -84,6 +84,23 @@ public class SequenceManager {
     }
 
     /**
+     * Rolls back the in-memory sequence if a flush failed after reserving a number.
+     * This prevents gaps like ...0005, ...0007 when ...0006 upload fails.
+     */
+    public void rollbackSequence(String tableFolder, long failedSeq) {
+        AtomicLong counter = sequences.get(tableFolder);
+        if (counter == null) return;
+
+        counter.updateAndGet(current -> {
+            if (current == failedSeq && failedSeq > 0) {
+                return failedSeq - 1;
+            }
+            return current;
+        });
+        LOG.debug("Table {}: rolled back failed reserved sequence {}", tableFolder, failedSeq);
+    }
+
+    /**
      * Formats a sequence number as a 20-digit zero-padded Parquet filename.
      */
     public static String toFilename(long seq) {

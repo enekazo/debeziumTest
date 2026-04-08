@@ -18,6 +18,7 @@ import org.junit.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,7 +46,10 @@ public class LocalSmokeTest {
         tempDir = Paths.get("target", "test-output").toAbsolutePath();
         Files.createDirectories(tempDir);
 
-        storage = new LocalStorageBackend("file://" + tempDir.toAbsolutePath());
+        // Ensure deterministic test state for sequence/file assertions.
+        deleteDirectoryIfExists(tempDir.resolve(TABLE_FOLDER));
+
+        storage = new LocalStorageBackend(tempDir.toUri().toString());
 
         // Define test table schema: ID NUMBER(10) PK, NAME VARCHAR2, HIRE_DATE DATE
         List<ColumnMetadata> columns = new ArrayList<>();
@@ -214,5 +218,21 @@ public class LocalSmokeTest {
             }
         }
         return records;
+    }
+
+    private void deleteDirectoryIfExists(Path dir) throws Exception {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (var walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        }
     }
 }

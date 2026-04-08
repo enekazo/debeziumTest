@@ -10,7 +10,9 @@
 -- captures full before/after row images.
 -- ---------------------------------------------------------------------------
 
--- ── HR user ─────────────────────────────────────────────────────────────────
+ALTER SESSION SET CONTAINER = ORCLPDB1;
+
+-- â”€â”€ HR user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CREATE USER hr
   IDENTIFIED BY hr
   DEFAULT TABLESPACE   USERS
@@ -24,7 +26,7 @@ GRANT CREATE TRIGGER   TO hr;
 GRANT CREATE PROCEDURE TO hr;
 GRANT CREATE VIEW      TO hr;
 
--- ── Sequences ───────────────────────────────────────────────────────────────
+-- â”€â”€ Sequences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CREATE SEQUENCE hr.departments_seq
   START WITH     100
   INCREMENT BY   10
@@ -35,7 +37,7 @@ CREATE SEQUENCE hr.employees_seq
   INCREMENT BY   1
   NOCACHE;
 
--- ── DEPARTMENTS ─────────────────────────────────────────────────────────────
+-- â”€â”€ DEPARTMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CREATE TABLE hr.departments (
   department_id   NUMBER(4)    NOT NULL,
   department_name VARCHAR2(30) NOT NULL,
@@ -47,7 +49,7 @@ CREATE TABLE hr.departments (
 ALTER TABLE hr.departments
   ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
 
--- ── EMPLOYEES ───────────────────────────────────────────────────────────────
+-- â”€â”€ EMPLOYEES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CREATE TABLE hr.employees (
   employee_id    NUMBER(6)     NOT NULL,
   first_name     VARCHAR2(20),
@@ -69,7 +71,7 @@ CREATE TABLE hr.employees (
 ALTER TABLE hr.employees
   ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
 
--- ── Sample data — departments ────────────────────────────────────────────────
+-- â”€â”€ Sample data â€” departments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 INSERT INTO hr.departments VALUES (10,  'Administration',      200, 1700);
 INSERT INTO hr.departments VALUES (20,  'Marketing',           201, 1800);
 INSERT INTO hr.departments VALUES (30,  'Purchasing',          114, 1700);
@@ -83,7 +85,7 @@ INSERT INTO hr.departments VALUES (100, 'Finance',             108, 1700);
 INSERT INTO hr.departments VALUES (110, 'Accounting',          205, 1700);
 INSERT INTO hr.departments VALUES (120, 'Treasury',            NULL, 1700);
 
--- ── Sample data — employees ──────────────────────────────────────────────────
+-- â”€â”€ Sample data â€” employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 INSERT INTO hr.employees VALUES (100,'Steven',   'King',      'SKING',    '515.123.4567', DATE '2003-06-17', 'AD_PRES', 24000, NULL, NULL, 90);
 INSERT INTO hr.employees VALUES (101,'Neena',    'Kochhar',   'NKOCHHAR', '515.123.4568', DATE '2005-09-21', 'AD_VP',   17000, NULL,  100, 90);
 INSERT INTO hr.employees VALUES (102,'Lex',      'De Haan',   'LDEHAAN',  '515.123.4569', DATE '2001-01-13', 'AD_VP',   17000, NULL,  100, 90);
@@ -100,7 +102,7 @@ INSERT INTO hr.employees VALUES (203,'Susan',    'Mavris',    'SMAVRIS',  '515.1
 INSERT INTO hr.employees VALUES (204,'Hermann',  'Baer',      'HBAER',    '515.123.8888', DATE '2002-06-07', 'PR_REP',  10000, NULL,  101, 70);
 INSERT INTO hr.employees VALUES (205,'Shelley',  'Higgins',   'SHIGGINS', '515.123.8080', DATE '2002-06-07', 'AC_MGR',  12008, NULL,  101, 110);
 
--- ── Grants to Debezium LogMiner user (after tables exist) ───────────────────
+-- â”€â”€ Grants to Debezium LogMiner user (after tables exist) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 GRANT SELECT ON hr.departments TO c##dbzuser;
 GRANT SELECT ON hr.employees   TO c##dbzuser;
 

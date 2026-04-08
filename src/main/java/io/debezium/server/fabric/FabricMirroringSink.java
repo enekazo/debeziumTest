@@ -327,6 +327,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
             LOG.info("Flushed {} rows to {}/{}", rows.size(), tableFolder, filename);
         } catch (Exception e) {
             LOG.error("Failed to flush {} rows to {}: {}", rows.size(), tableFolder, e.getMessage(), e);
+            sequenceManager.rollbackSequence(tableFolder, seq);
             // Re-buffer rows to avoid data loss; prepend failed rows before any new rows
             // that arrived while flushing to maintain chronological order
             synchronized (this) {

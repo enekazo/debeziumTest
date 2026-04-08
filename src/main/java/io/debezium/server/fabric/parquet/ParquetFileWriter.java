@@ -96,6 +96,12 @@ public class ParquetFileWriter {
         int marker = 0;
         if (markerVal instanceof Number) {
             marker = ((Number) markerVal).intValue();
+        } else if (markerVal instanceof String && !((String) markerVal).isBlank()) {
+            try {
+                marker = Integer.parseInt(((String) markerVal).trim());
+            } catch (NumberFormatException ignored) {
+                marker = 0;
+            }
         }
         record.put(rowMarkerColumn, marker);
 
