@@ -8,22 +8,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds an Avro Schema from Oracle TableMetadata for use with Parquet file writing.
+ * Builds an Avro Schema from PostgreSQL {@link TableMetadata} for use with Parquet file writing.
  *
- * Oracle type → Avro logical type mapping:
- * - DATE                                 → int (logicalType=date), Parquet INT32 DATE
- * - TIMESTAMP, TIMESTAMP(n)              → long (logicalType=timestamp-millis)
- * - TIMESTAMP WITH TIME ZONE             → string
- * - TIMESTAMP WITH LOCAL TIME ZONE       → string
- * - NUMBER (no precision)                → double
- * - NUMBER(p,0) p<=9                     → int
- * - NUMBER(p,0) p<=18                    → long
- * - NUMBER(p,s) s>0                      → double
- * - FLOAT, BINARY_FLOAT                  → float
- * - BINARY_DOUBLE                        → double
- * - VARCHAR2, CHAR, NVARCHAR2, NCHAR, VARCHAR → string
- * - CLOB, NCLOB, LONG                    → string
- * - RAW, BLOB, LONG RAW                  → bytes
+ * PostgreSQL data_type → Avro logical type mapping:
+ * - date                                      → int  (logicalType=date), Parquet INT32 DATE
+ * - timestamp without time zone               → long (logicalType=timestamp-millis)
+ * - timestamp with time zone                  → string
+ * - smallint, integer                         → int
+ * - bigint                                    → long
+ * - boolean                                   → boolean
+ * - real                                      → float
+ * - double precision                          → double
+ * - numeric / decimal (scale>0)               → double
+ * - numeric / decimal (scale=0, precision≤9)  → int
+ * - numeric / decimal (scale=0, precision≤18) → long
+ * - numeric / decimal (no precision)          → double
+ * - character varying, text, char, uuid, json, jsonb → string
+ * - bytea                                     → bytes
  * - Nullable columns wrapped in ["null", <type>] union with default null
  * - Non-nullable INT field "__rowMarker__" appended at end
  */
@@ -36,8 +37,8 @@ public class AvroSchemaBuilder {
         List<Schema.Field> fields = new ArrayList<>();
 
         for (ColumnMetadata col : tableMetadata.getColumns()) {
-            Schema fieldSchema = oracleTypeToAvroSchema(col);
-            // All data columns are nullable in the Parquet schema regardless of Oracle nullability.
+            Schema fieldSchema = dataTypeToAvroSchema(col);
+            // All data columns are nullable in the Parquet schema regardless of source nullability.
             // CDC events (UPDATE via LogMiner, DELETE with only PK) routinely omit non-PK columns,
             // which would cause "Null-value for required field" errors at flush time.
             Schema nullableSchema = Schema.createUnion(
@@ -62,24 +63,45 @@ public class AvroSchemaBuilder {
         return buildSchema(meta, rowMarkerColumn);
     }
 
-    private Schema oracleTypeToAvroSchema(ColumnMetadata col) {
-        String type = col.getOracleType().toUpperCase();
+    private Schema dataTypeToAvroSchema(ColumnMetadata col) {
+        String type = col.getDataType().toLowerCase();
 
-        // DATE → Avro int with logicalType=date (days since epoch)
-        if (type.equals("DATE")) {
+        // date → Avro int with logicalType=date (days since epoch)
+        if (type.equals("date")) {
             return LogicalTypes.DATE;
         }
 
-        // TIMESTAMP variants
-        if (type.startsWith("TIMESTAMP WITH TIME ZONE") || type.startsWith("TIMESTAMP WITH LOCAL TIME ZONE")) {
+        // timestamp variants
+        if (type.equals("timestamp with time zone") || type.equals("timestamptz")) {
             return Schema.create(Schema.Type.STRING);
         }
-        if (type.startsWith("TIMESTAMP")) {
+        if (type.startsWith("timestamp")) {
             return LogicalTypes.TIMESTAMP_MILLIS;
         }
 
-        // NUMBER
-        if (type.equals("NUMBER")) {
+        // integer types
+        if (type.equals("smallint") || type.equals("integer") || type.equals("int2") || type.equals("int4")) {
+            return Schema.create(Schema.Type.INT);
+        }
+        if (type.equals("bigint") || type.equals("int8")) {
+            return Schema.create(Schema.Type.LONG);
+        }
+
+        // boolean
+        if (type.equals("boolean") || type.equals("bool")) {
+            return Schema.create(Schema.Type.BOOLEAN);
+        }
+
+        // floating point
+        if (type.equals("real") || type.equals("float4")) {
+            return Schema.create(Schema.Type.FLOAT);
+        }
+        if (type.equals("double precision") || type.equals("float8") || type.equals("float")) {
+            return Schema.create(Schema.Type.DOUBLE);
+        }
+
+        // numeric / decimal
+        if (type.equals("numeric") || type.equals("decimal")) {
             int precision = col.getPrecision();
             int scale = col.getScale();
             if (precision == 0) {
@@ -98,29 +120,12 @@ public class AvroSchemaBuilder {
             return Schema.create(Schema.Type.DOUBLE);
         }
 
-        // FLOAT types
-        if (type.equals("FLOAT") || type.equals("BINARY_FLOAT")) {
-            return Schema.create(Schema.Type.FLOAT);
-        }
-        if (type.equals("BINARY_DOUBLE")) {
-            return Schema.create(Schema.Type.DOUBLE);
-        }
-
-        // String types
-        if (type.equals("VARCHAR2") || type.equals("CHAR") || type.equals("NVARCHAR2") ||
-                type.equals("NCHAR") || type.equals("VARCHAR")) {
-            return Schema.create(Schema.Type.STRING);
-        }
-        if (type.equals("CLOB") || type.equals("NCLOB") || type.equals("LONG")) {
-            return Schema.create(Schema.Type.STRING);
-        }
-
-        // Binary types
-        if (type.equals("RAW") || type.startsWith("RAW(") || type.equals("BLOB") || type.equals("LONG RAW")) {
+        // binary
+        if (type.equals("bytea")) {
             return Schema.create(Schema.Type.BYTES);
         }
 
-        // Default fallback to string
+        // Default: string (covers character varying, text, char, uuid, json, jsonb, etc.)
         return Schema.create(Schema.Type.STRING);
     }
 

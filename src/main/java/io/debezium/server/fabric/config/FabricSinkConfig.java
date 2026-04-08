@@ -17,10 +17,10 @@ public class FabricSinkConfig {
     public final String compression;
     public final String rowMarkerColumn;
     public final String stateFileName;
-    public final String oracleJdbcUrl;
-    public final String oracleUsername;
-    public final String oraclePassword;
-    public final long oracleMetaRefreshMs;
+    public final String postgresJdbcUrl;
+    public final String postgresUsername;
+    public final String postgresPassword;
+    public final long postgresMetaRefreshMs;
     public final boolean fetchRowOnUpdate;
     public final String topicPrefix;
 
@@ -29,8 +29,8 @@ public class FabricSinkConfig {
             String spTenantId, String spClientId, String spClientSecret,
             long flushMaxBytes, int flushMaxRecords, long flushIntervalMs,
             String compression, String rowMarkerColumn, String stateFileName,
-            String oracleJdbcUrl, String oracleUsername, String oraclePassword,
-            long oracleMetaRefreshMs, boolean fetchRowOnUpdate, String topicPrefix) {
+            String postgresJdbcUrl, String postgresUsername, String postgresPassword,
+            long postgresMetaRefreshMs, boolean fetchRowOnUpdate, String topicPrefix) {
         this.baseUri = baseUri;
         this.authType = authType;
         this.sasToken = sasToken;
@@ -43,10 +43,10 @@ public class FabricSinkConfig {
         this.compression = compression;
         this.rowMarkerColumn = rowMarkerColumn;
         this.stateFileName = stateFileName;
-        this.oracleJdbcUrl = oracleJdbcUrl;
-        this.oracleUsername = oracleUsername;
-        this.oraclePassword = oraclePassword;
-        this.oracleMetaRefreshMs = oracleMetaRefreshMs;
+        this.postgresJdbcUrl = postgresJdbcUrl;
+        this.postgresUsername = postgresUsername;
+        this.postgresPassword = postgresPassword;
+        this.postgresMetaRefreshMs = postgresMetaRefreshMs;
         this.fetchRowOnUpdate = fetchRowOnUpdate;
         this.topicPrefix = topicPrefix;
     }
@@ -94,22 +94,22 @@ public class FabricSinkConfig {
         String stateFileName = cfg.getOptionalValue("fabric.sequence.stateFileName", String.class)
                 .orElse("_sequence.txt");
 
-        String oracleJdbcUrl = cfg.getOptionalValue("fabric.oracle.jdbcUrl", String.class)
+        String postgresJdbcUrl = cfg.getOptionalValue("fabric.postgres.jdbcUrl", String.class)
                 .orElse(null);
-        String oracleUsername = cfg.getOptionalValue("fabric.oracle.username", String.class)
+        String postgresUsername = cfg.getOptionalValue("fabric.postgres.username", String.class)
                 .orElse(null);
 
-        // Oracle password: check config property first, then env var
-        String oraclePassword = cfg.getOptionalValue("fabric.oracle.password", String.class)
+        // PostgreSQL password: check config property first, then env var
+        String postgresPassword = cfg.getOptionalValue("fabric.postgres.password", String.class)
                 .orElseGet(() -> {
-                    String env = System.getenv("ORACLE_PASSWORD");
+                    String env = System.getenv("POSTGRES_PASSWORD");
                     return env != null ? env : null;
                 });
 
-        long oracleMetaRefreshMs = cfg.getOptionalValue("fabric.oracle.metadata.refreshIntervalMs", Long.class)
+        long postgresMetaRefreshMs = cfg.getOptionalValue("fabric.postgres.metadata.refreshIntervalMs", Long.class)
                 .orElse(300000L);
-        boolean fetchRowOnUpdate = cfg.getOptionalValue("fabric.oracle.fetchRowOnUpdate", Boolean.class)
-                .orElse(true);
+        boolean fetchRowOnUpdate = cfg.getOptionalValue("fabric.postgres.fetchRowOnUpdate", Boolean.class)
+                .orElse(false);
 
         String topicPrefix = cfg.getOptionalValue("debezium.source.topic.prefix", String.class)
                 .orElse("");
@@ -119,7 +119,7 @@ public class FabricSinkConfig {
                 spTenantId, spClientId, spClientSecret,
                 flushMaxBytes, flushMaxRecords, flushIntervalMs,
                 compression, rowMarkerColumn, stateFileName,
-                oracleJdbcUrl, oracleUsername, oraclePassword,
-                oracleMetaRefreshMs, fetchRowOnUpdate, topicPrefix);
+                postgresJdbcUrl, postgresUsername, postgresPassword,
+                postgresMetaRefreshMs, fetchRowOnUpdate, topicPrefix);
     }
 }

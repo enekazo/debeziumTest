@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.server.fabric.config.FabricSinkConfig;
-import io.debezium.server.fabric.metadata.OracleMetadataLoader;
+import io.debezium.server.fabric.metadata.PostgresMetadataLoader;
 import io.debezium.server.fabric.metadata.TableMetadata;
 import io.debezium.server.fabric.parquet.ParquetFileWriter;
 import io.debezium.server.fabric.storage.AdlsServicePrincipalStorageBackend;
@@ -34,7 +34,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Debezium Server custom sink that writes Oracle CDC events to Microsoft Fabric
+ * Debezium Server custom sink that writes PostgreSQL CDC events to Microsoft Fabric
  * Open Mirroring landing zone as Parquet files.
  *
  * Discovered by Debezium Server via the {@code @Named("fabric")} annotation.
@@ -53,7 +53,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
     private FabricSinkConfig config;
     private StorageBackend storage;
-    private OracleMetadataLoader metadataLoader;
+    private PostgresMetadataLoader metadataLoader;
     private SequenceManager sequenceManager;
     private MetadataManager metadataManager;
     private ParquetFileWriter parquetWriter;
@@ -90,14 +90,14 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
             storage = new LocalStorageBackend(config.baseUri);
         }
 
-        // Initialize Oracle metadata loader if JDBC config present.
+        // Initialize PostgreSQL metadata loader if JDBC config is present.
         // Without this, the sink cannot write Parquet files since Avro schema
-        // generation requires Oracle column and PK metadata.
-        if (config.oracleJdbcUrl != null && !config.oracleJdbcUrl.isBlank()) {
-            metadataLoader = new OracleMetadataLoader(
-                    config.oracleJdbcUrl, config.oracleUsername, config.oraclePassword,
-                    config.oracleMetaRefreshMs);
-            LOG.info("Oracle metadata loader configured for {}", config.oracleJdbcUrl);
+        // generation requires PostgreSQL column and PK metadata.
+        if (config.postgresJdbcUrl != null && !config.postgresJdbcUrl.isBlank()) {
+            metadataLoader = new PostgresMetadataLoader(
+                    config.postgresJdbcUrl, config.postgresUsername, config.postgresPassword,
+                    config.postgresMetaRefreshMs);
+            LOG.info("PostgreSQL metadata loader configured for {}", config.postgresJdbcUrl);
         }
 
         sequenceManager = new SequenceManager(storage, config.stateFileName);
@@ -108,7 +108,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
         // Write _partnerEvents.json at the landing zone root (strongly recommended by Fabric)
         try {
             String partnerEvents = "{\"partnerName\":\"debezium-fabric-sink\"," +
-                    "\"sourceInfo\":{\"sourceType\":\"Oracle\",\"sourceVersion\":\"23c\"}}";
+                    "\"sourceInfo\":{\"sourceType\":\"PostgreSQL\",\"sourceVersion\":\"17\"}}";
             storage.writeTextFile("", "_partnerEvents.json", partnerEvents);
             LOG.info("Wrote _partnerEvents.json to landing zone root");
         } catch (Exception e) {
@@ -220,9 +220,9 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
             case "u" -> {
                 // Update
                 row = jsonNodeToMap(afterNode);
-                // If fetchRowOnUpdate enabled and "after" is null/empty, fetch from Oracle
-                if (config.fetchRowOnUpdate && metadataLoader != null &&
-                        (row == null || row.isEmpty()) && beforeNode != null) {
+                // If fetchRowOnUpdate enabled and "after" is null/empty, fetch from PostgreSQL
+                if (config.fetchRowOnUpdate && metadataLoader != null
+                        && (row == null || row.isEmpty()) && beforeNode != null) {
                     row = fetchUpdatedRow(tableFolder, beforeNode);
                 }
                 if (row == null) row = jsonNodeToMap(beforeNode);
@@ -367,7 +367,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
                 tableMetadataMap.put(tableFolder, meta);
                 return meta;
             } catch (Exception e) {
-                LOG.warn("Could not load Oracle metadata for {}.{}: {}", schema, tableName, e.getMessage());
+                LOG.warn("Could not load PostgreSQL metadata for {}.{}: {}", schema, tableName, e.getMessage());
             }
         }
         return null;
@@ -384,7 +384,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
 
     /**
      * Converts a Debezium topic name to a table folder name.
-     * "oracle.HR.EMPLOYEES" with prefix "oracle" → "HR.schema/EMPLOYEES"
+     * "postgresqlev01.demo_cdc.customers" with prefix "postgresqlev01" → "demo_cdc.schema/customers"
      */
     private String topicToTableFolder(String topic) {
         String stripped = topic;
@@ -392,7 +392,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
             stripped = topic.substring(config.topicPrefix.length() + 1);
         }
         // Fabric schema folder convention: <Schema>.schema/<Table>
-        // e.g. topic "oracle.HR.EMPLOYEES" → stripped "HR.EMPLOYEES" → "HR.schema/EMPLOYEES"
+        // e.g. topic "postgresqlev01.demo_cdc.customers" → stripped "demo_cdc.customers" → "demo_cdc.schema/customers"
         // If there is no dot (no schema), use the name as-is.
         int dotIdx = stripped.indexOf('.');
         if (dotIdx > 0 && dotIdx < stripped.length() - 1) {
@@ -429,7 +429,7 @@ public class FabricMirroringSink implements DebeziumEngine.ChangeConsumer<Change
     }
 
     /**
-     * Allows tests to pre-register table metadata without a live Oracle connection.
+     * Allows tests to pre-register table metadata without a live PostgreSQL connection.
      */
     public void registerTableMetadata(String tableFolder, TableMetadata metadata) {
         tableMetadataMap.put(tableFolder, metadata);

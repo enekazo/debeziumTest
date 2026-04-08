@@ -3,15 +3,15 @@ package io.debezium.server.fabric.metadata;
 public class ColumnMetadata {
 
     public final String name;
-    public final String oracleType;
+    public final String dataType;
     public final int precision;
     public final int scale;
     public final boolean nullable;
     public final int columnId;
 
-    public ColumnMetadata(String name, String oracleType, int precision, int scale, boolean nullable, int columnId) {
+    public ColumnMetadata(String name, String dataType, int precision, int scale, boolean nullable, int columnId) {
         this.name = name;
-        this.oracleType = oracleType;
+        this.dataType = dataType;
         this.precision = precision;
         this.scale = scale;
         this.nullable = nullable;
@@ -22,8 +22,8 @@ public class ColumnMetadata {
         return name;
     }
 
-    public String getOracleType() {
-        return oracleType;
+    public String getDataType() {
+        return dataType;
     }
 
     public int getPrecision() {
@@ -44,7 +44,7 @@ public class ColumnMetadata {
 
     @Override
     public String toString() {
-        return "ColumnMetadata{name='" + name + "', oracleType='" + oracleType +
+        return "ColumnMetadata{name='" + name + "', dataType='" + dataType +
                 "', precision=" + precision + ", scale=" + scale +
                 ", nullable=" + nullable + ", columnId=" + columnId + "}";
     }

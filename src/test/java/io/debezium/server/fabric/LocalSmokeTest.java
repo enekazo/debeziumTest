@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 
 /**
  * Local smoke test for the Fabric sink Parquet writing pipeline.
- * Uses LocalStorageBackend with a temp directory; no Oracle or Azure connection required.
+ * Uses LocalStorageBackend with a temp directory; no PostgreSQL or Azure connection required.
  */
 public class LocalSmokeTest {
 
@@ -51,13 +51,14 @@ public class LocalSmokeTest {
 
         storage = new LocalStorageBackend(tempDir.toUri().toString());
 
-        // Define test table schema: ID NUMBER(10) PK, NAME VARCHAR2, HIRE_DATE DATE
+        // Define test table schema: id bigint PK, first_name varchar, last_name varchar,
+        //                            hire_date date, salary numeric(8,2)
         List<ColumnMetadata> columns = new ArrayList<>();
-        columns.add(new ColumnMetadata("EMPLOYEE_ID", "NUMBER", 10, 0, false, 1));
-        columns.add(new ColumnMetadata("FIRST_NAME",  "VARCHAR2", 0, 0, true,  2));
-        columns.add(new ColumnMetadata("LAST_NAME",   "VARCHAR2", 0, 0, false, 3));
-        columns.add(new ColumnMetadata("HIRE_DATE",   "DATE",     0, 0, true,  4));
-        columns.add(new ColumnMetadata("SALARY",      "NUMBER",   8, 2, true,  5));
+        columns.add(new ColumnMetadata("EMPLOYEE_ID", "bigint",            0,  0, false, 1));
+        columns.add(new ColumnMetadata("FIRST_NAME",  "character varying", 0,  0, true,  2));
+        columns.add(new ColumnMetadata("LAST_NAME",   "character varying", 0,  0, false, 3));
+        columns.add(new ColumnMetadata("HIRE_DATE",   "date",              0,  0, true,  4));
+        columns.add(new ColumnMetadata("SALARY",      "numeric",           8,  2, true,  5));
 
         tableMetadata = new TableMetadata("HR", "EMPLOYEES", columns, List.of("EMPLOYEE_ID"));
     }

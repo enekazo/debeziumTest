@@ -21,16 +21,17 @@ import java.util.Map;
 /**
  * Writes CDC row data (as List of Map<String,Object>) to a Parquet file using Avro schema.
  *
- * Value conversion rules:
- * - DATE columns: Debezium sends int (days since epoch) or Long (millis) → convert to int days
- *   For Long: divide by 86400000L
- * - TIMESTAMP columns: Debezium sends Long (micros from Debezium connector) → divide by 1000 to get millis
+ * Value conversion rules (PostgreSQL data_type values from information_schema):
+ * - date columns: Debezium sends int (days since epoch) or Long (millis) → convert to int days
+ * - timestamp columns: Debezium sends Long (micros) → divide by 1000 to get millis
  *   If connect precision mode is used, value may already be millis
- * - NUMBER(p,0) p<=9 → int
- * - NUMBER(p,0) p<=18 → long
- * - NUMBER no prec or scale>0 → double
- * - FLOAT/BINARY_FLOAT → float
- * - BINARY_DOUBLE → double
+ * - smallint, integer → int
+ * - bigint → long
+ * - numeric/decimal (p≤9, scale=0) → int; (p≤18, scale=0) → long; else → double
+ * - real/float4 → float
+ * - double precision → double
+ * - boolean → boolean
+ * - bytea → ByteBuffer
  * - String → as-is
  * - null → null (for nullable fields)
  * - __rowMarker__ → int (0=insert, 1=update, 2=delete)
@@ -112,9 +113,9 @@ public class ParquetFileWriter {
         if (raw == null) {
             return null;
         }
-        String type = col.getOracleType().toUpperCase();
+        String type = col.getDataType().toLowerCase();
 
-        if (type.equals("DATE")) {
+        if (type.equals("date")) {
             // Debezium with time.precision.mode=connect sends DATE as int (days since epoch)
             // Debezium default sends as long (millis since epoch)
             if (raw instanceof Integer) {
@@ -131,11 +132,11 @@ public class ParquetFileWriter {
             return ((Number) raw).intValue();
         }
 
-        if (type.startsWith("TIMESTAMP WITH TIME ZONE") || type.startsWith("TIMESTAMP WITH LOCAL TIME ZONE")) {
+        if (type.equals("timestamp with time zone") || type.equals("timestamptz")) {
             return raw.toString();
         }
 
-        if (type.startsWith("TIMESTAMP")) {
+        if (type.startsWith("timestamp")) {
             // Debezium sends micros for TIMESTAMP, millis for connect mode
             if (raw instanceof Long) {
                 long val = (Long) raw;
@@ -148,21 +149,36 @@ public class ParquetFileWriter {
             return ((Number) raw).longValue();
         }
 
-        if (type.equals("NUMBER")) {
-            return convertNumber(col, raw);
+        if (type.equals("smallint") || type.equals("integer") || type.equals("int2") || type.equals("int4")) {
+            if (raw instanceof Integer) return raw;
+            return ((Number) raw).intValue();
         }
 
-        if (type.equals("FLOAT") || type.equals("BINARY_FLOAT")) {
+        if (type.equals("bigint") || type.equals("int8")) {
+            if (raw instanceof Long) return raw;
+            return ((Number) raw).longValue();
+        }
+
+        if (type.equals("boolean") || type.equals("bool")) {
+            if (raw instanceof Boolean) return raw;
+            return Boolean.parseBoolean(raw.toString());
+        }
+
+        if (type.equals("numeric") || type.equals("decimal")) {
+            return convertNumeric(col, raw);
+        }
+
+        if (type.equals("real") || type.equals("float4")) {
             if (raw instanceof Float) return raw;
             return ((Number) raw).floatValue();
         }
 
-        if (type.equals("BINARY_DOUBLE")) {
+        if (type.equals("double precision") || type.equals("float8") || type.equals("float")) {
             if (raw instanceof Double) return raw;
             return ((Number) raw).doubleValue();
         }
 
-        if (type.equals("RAW") || type.startsWith("RAW(") || type.equals("BLOB") || type.equals("LONG RAW")) {
+        if (type.equals("bytea")) {
             if (raw instanceof byte[]) {
                 return ByteBuffer.wrap((byte[]) raw);
             }
@@ -172,11 +188,11 @@ public class ParquetFileWriter {
             return ByteBuffer.wrap(raw.toString().getBytes());
         }
 
-        // Default: string
+        // Default: string (covers character varying, text, uuid, json, jsonb, etc.)
         return raw.toString();
     }
 
-    private Object convertNumber(ColumnMetadata col, Object raw) {
+    private Object convertNumeric(ColumnMetadata col, Object raw) {
         int precision = col.getPrecision();
         int scale = col.getScale();
 

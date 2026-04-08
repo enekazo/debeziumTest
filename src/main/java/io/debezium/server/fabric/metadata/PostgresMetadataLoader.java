@@ -13,22 +13,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class OracleMetadataLoader {
+/**
+ * Loads table metadata (column definitions and primary keys) from a PostgreSQL database
+ * using {@code information_schema}. Results are cached and refreshed on expiry.
+ */
+public class PostgresMetadataLoader {
 
-    private static final Logger LOG = LoggerFactory.getLogger(OracleMetadataLoader.class);
+    private static final Logger LOG = LoggerFactory.getLogger(PostgresMetadataLoader.class);
 
     private static final String SQL_COLUMNS =
-            "SELECT COLUMN_NAME, DATA_TYPE, DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID " +
-            "FROM ALL_TAB_COLUMNS " +
-            "WHERE OWNER = ? AND TABLE_NAME = ? " +
-            "ORDER BY COLUMN_ID";
+            "SELECT column_name, data_type, numeric_precision, numeric_scale, " +
+            "       is_nullable, ordinal_position " +
+            "FROM information_schema.columns " +
+            "WHERE table_schema = ? AND table_name = ? " +
+            "ORDER BY ordinal_position";
 
     private static final String SQL_PK =
-            "SELECT acc.COLUMN_NAME, acc.POSITION " +
-            "FROM ALL_CONSTRAINTS ac " +
-            "JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME AND ac.OWNER = acc.OWNER " +
-            "WHERE ac.OWNER = ? AND ac.TABLE_NAME = ? AND ac.CONSTRAINT_TYPE = 'P' " +
-            "ORDER BY acc.POSITION";
+            "SELECT kcu.column_name, kcu.ordinal_position " +
+            "FROM information_schema.table_constraints tc " +
+            "JOIN information_schema.key_column_usage kcu " +
+            "    ON tc.constraint_name = kcu.constraint_name " +
+            "    AND tc.table_schema = kcu.table_schema " +
+            "WHERE tc.table_schema = ? AND tc.table_name = ? " +
+            "  AND tc.constraint_type = 'PRIMARY KEY' " +
+            "ORDER BY kcu.ordinal_position";
 
     private final String jdbcUrl;
     private final String username;
@@ -37,7 +45,7 @@ public class OracleMetadataLoader {
 
     private final ConcurrentHashMap<String, CachedMetadata> cache = new ConcurrentHashMap<>();
 
-    public OracleMetadataLoader(String jdbcUrl, String username, String password, long refreshIntervalMs) {
+    public PostgresMetadataLoader(String jdbcUrl, String username, String password, long refreshIntervalMs) {
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
@@ -45,12 +53,12 @@ public class OracleMetadataLoader {
     }
 
     public TableMetadata getTableMetadata(String schema, String tableName) {
-        String key = schema.toUpperCase() + "." + tableName.toUpperCase();
+        String key = schema.toLowerCase() + "." + tableName.toLowerCase();
         CachedMetadata cached = cache.get(key);
         if (cached != null && !cached.isExpired(refreshIntervalMs)) {
             return cached.metadata;
         }
-        TableMetadata metadata = loadFromDatabase(schema.toUpperCase(), tableName.toUpperCase());
+        TableMetadata metadata = loadFromDatabase(schema.toLowerCase(), tableName.toLowerCase());
         cache.put(key, new CachedMetadata(metadata));
         return metadata;
     }
@@ -73,13 +81,13 @@ public class OracleMetadataLoader {
             ps.setString(2, tableName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String colName = rs.getString("COLUMN_NAME");
-                    String dataType = rs.getString("DATA_TYPE");
-                    int precision = rs.getObject("DATA_PRECISION") != null ? rs.getInt("DATA_PRECISION") : 0;
-                    int scale = rs.getObject("DATA_SCALE") != null ? rs.getInt("DATA_SCALE") : 0;
-                    boolean nullable = "Y".equals(rs.getString("NULLABLE"));
-                    int columnId = rs.getInt("COLUMN_ID");
-                    columns.add(new ColumnMetadata(colName, dataType, precision, scale, nullable, columnId));
+                    String colName = rs.getString("column_name");
+                    String dataType = rs.getString("data_type");
+                    int precision = rs.getObject("numeric_precision") != null ? rs.getInt("numeric_precision") : 0;
+                    int scale = rs.getObject("numeric_scale") != null ? rs.getInt("numeric_scale") : 0;
+                    boolean nullable = "YES".equalsIgnoreCase(rs.getString("is_nullable"));
+                    int ordinalPosition = rs.getInt("ordinal_position");
+                    columns.add(new ColumnMetadata(colName, dataType, precision, scale, nullable, ordinalPosition));
                 }
             }
         }
@@ -93,7 +101,7 @@ public class OracleMetadataLoader {
             ps.setString(2, tableName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    pkColumns.add(rs.getString("COLUMN_NAME"));
+                    pkColumns.add(rs.getString("column_name"));
                 }
             }
         }
@@ -101,7 +109,7 @@ public class OracleMetadataLoader {
     }
 
     /**
-     * Fetches a full row from Oracle by primary key values.
+     * Fetches a full row from PostgreSQL by primary key values.
      * Used when Debezium update events have incomplete "after" data.
      */
     public Map<String, Object> fetchRowByPk(String schema, String tableName, Map<String, Object> pkValues) {

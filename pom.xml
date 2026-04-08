@@ -152,10 +152,10 @@
             <artifactId>debezium-api</artifactId>
             <version>${debezium.version}</version>
         </dependency>
-        <!-- Oracle CDC connector -->
+        <!-- PostgreSQL CDC connector -->
         <dependency>
             <groupId>io.debezium</groupId>
-            <artifactId>debezium-connector-oracle</artifactId>
+            <artifactId>debezium-connector-postgres</artifactId>
             <version>${debezium.version}</version>
         </dependency>
         <!-- CDI, MicroProfile Config, Jackson, SLF4J all come transitively
@@ -188,11 +188,11 @@
             <version>1.15.4</version>
         </dependency>
 
-        <!-- Oracle JDBC (bundled in fat jar) -->
+        <!-- PostgreSQL JDBC driver -->
         <dependency>
-            <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc11</artifactId>
-            <version>23.7.0.25.01</version>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.5</version>
         </dependency>
 
         <!-- Hadoop Common — required by parquet-hadoop (declared as provided there) -->
