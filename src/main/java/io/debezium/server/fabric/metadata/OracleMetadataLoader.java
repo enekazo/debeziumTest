@@ -30,6 +30,28 @@ public class OracleMetadataLoader {
             "WHERE ac.OWNER = ? AND ac.TABLE_NAME = ? AND ac.CONSTRAINT_TYPE = 'P' " +
             "ORDER BY acc.POSITION";
 
+    private static final String SQL_FK =
+            "SELECT acc.COLUMN_NAME AS fk_col, " +
+            "       r_ac.OWNER AS ref_schema, r_ac.TABLE_NAME AS ref_table, " +
+            "       r_acc.COLUMN_NAME AS ref_col " +
+            "FROM ALL_CONSTRAINTS ac " +
+            "JOIN ALL_CONS_COLUMNS acc " +
+            "  ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME AND ac.OWNER = acc.OWNER " +
+            "JOIN ALL_CONSTRAINTS r_ac " +
+            "  ON ac.R_CONSTRAINT_NAME = r_ac.CONSTRAINT_NAME AND ac.R_OWNER = r_ac.OWNER " +
+            "JOIN ALL_CONS_COLUMNS r_acc " +
+            "  ON r_ac.CONSTRAINT_NAME = r_acc.CONSTRAINT_NAME AND r_ac.OWNER = r_acc.OWNER " +
+            "     AND acc.POSITION = r_acc.POSITION " +
+            "WHERE ac.OWNER = ? AND ac.TABLE_NAME = ? AND ac.CONSTRAINT_TYPE = 'R' " +
+            "ORDER BY acc.POSITION";
+
+    private static final String SQL_UNIQUE =
+            "SELECT acc.COLUMN_NAME " +
+            "FROM ALL_CONSTRAINTS ac " +
+            "JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME AND ac.OWNER = acc.OWNER " +
+            "WHERE ac.OWNER = ? AND ac.TABLE_NAME = ? AND ac.CONSTRAINT_TYPE = 'U' " +
+            "ORDER BY ac.CONSTRAINT_NAME, acc.POSITION";
+
     private final String jdbcUrl;
     private final String username;
     private final String password;
@@ -60,7 +82,9 @@ public class OracleMetadataLoader {
         try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password)) {
             List<ColumnMetadata> columns = loadColumns(conn, schema, tableName);
             List<String> pkColumns = loadPkColumns(conn, schema, tableName);
-            return new TableMetadata(schema, tableName, columns, pkColumns);
+            List<ForeignKeyMetadata> foreignKeys = loadForeignKeys(conn, schema, tableName);
+            List<String> uniqueColumns = loadUniqueColumns(conn, schema, tableName);
+            return new TableMetadata(schema, tableName, columns, pkColumns, foreignKeys, uniqueColumns);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load metadata for " + schema + "." + tableName, e);
         }
@@ -98,6 +122,38 @@ public class OracleMetadataLoader {
             }
         }
         return pkColumns;
+    }
+
+    private List<ForeignKeyMetadata> loadForeignKeys(Connection conn, String schema, String tableName) throws Exception {
+        List<ForeignKeyMetadata> fks = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(SQL_FK)) {
+            ps.setString(1, schema);
+            ps.setString(2, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    fks.add(new ForeignKeyMetadata(
+                            rs.getString("fk_col"),
+                            rs.getString("ref_schema"),
+                            rs.getString("ref_table"),
+                            rs.getString("ref_col")));
+                }
+            }
+        }
+        return fks;
+    }
+
+    private List<String> loadUniqueColumns(Connection conn, String schema, String tableName) throws Exception {
+        List<String> uniqueCols = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(SQL_UNIQUE)) {
+            ps.setString(1, schema);
+            ps.setString(2, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    uniqueCols.add(rs.getString("COLUMN_NAME"));
+                }
+            }
+        }
+        return uniqueCols;
     }
 
     /**

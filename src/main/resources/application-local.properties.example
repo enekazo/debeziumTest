@@ -66,3 +66,14 @@ debezium.source.decimal.handling.mode=double
 debezium.source.offset.storage=org.apache.kafka.connect.storage.FileOffsetBackingStore
 debezium.source.offset.storage.file.filename=/debezium/data/offsets.dat
 debezium.source.offset.flush.interval.ms=1000
+
+# ── Dummy Data Generator ──────────────────────────────────────────────────────
+# Set generator.enabled=true to continuously insert random rows into the tables
+# listed below. The generator reuses the fabric.oracle.* JDBC credentials unless
+# overridden with generator.jdbcUrl / generator.username / generator.password.
+#
+# generator.enabled=false
+# generator.tables=HR.DEPARTMENTS,HR.EMPLOYEES
+# generator.interval.ms=5000
+# generator.batch.size=10
+# generator.null.probability=0.1
